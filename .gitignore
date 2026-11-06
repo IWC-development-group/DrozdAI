@@ -1,0 +1,13 @@
+#Folders
+
+/.ipynb_checkpoints/
+/.vscode/
+/jupyter/
+/models/
+__pycache__/
+
+#Files
+
+config.env
+bot_session.session
+bot_session.session-journal
