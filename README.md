@@ -1,3 +1,3 @@
 # DrozdAI
 
-Яйценосный ДРООООЗД!
+View DrozdAI API specification [here](drozdai_api.md)
