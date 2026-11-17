@@ -1,4 +1,5 @@
-import requests
+import aiohttp
+import asyncio
 import os
 import json
 from telethon import TelegramClient, events, connection
@@ -24,6 +25,8 @@ client = TelegramClient(
     connection=connection.ConnectionTcpMTProxyRandomizedIntermediate,
     proxy=(PROXY_HOST, PROXY_PORT, PROXY_SECRET),
 )
+
+model_lock = asyncio.Semaphore(1)
 
 # === /params ===
 @client.on(events.NewMessage(pattern=r'^/params'))
@@ -66,22 +69,43 @@ async def model(event):
     content = f"Текущая модель: {response['model_name']}\n\nОписание:\n{response['model_description']}"
     message = await event.reply(content)
 
-@client.on(events.NewMessage(func=lambda e: e.text and not e.text.startswith('/')))
+@client.on(events.NewMessage(
+    incoming=True,
+    func=lambda e: (
+        e.text
+        and not e.text.startswith('/')
+    )
+))
 async def sendPrompt(event):
     global temp, len
-    msg = await event.reply("Думаю...")
+    msg = await event.reply("В очереди")
     data = {"prompt": event.text, "temperature": float(temp), "len": int(len)}
 
     #busy_test = requests.get("http://localhost:5001/status").json()
     #if busy_test:
     #    await client.edit_message(event.chat_id, msg.id, str("Сервер занят!"))
 
-    response = requests.get("http://localhost:5001/prompt", params=data).json()
+    try:
+        async with model_lock:
+            await msg.edit("Думаю...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://localhost:5001/prompt", params=data) as resp:
+                    response = await resp.json()
 
-    if not response['error']:
-        await client.edit_message(event.chat_id, msg.id, str(response['message']))
-    else:
-        await client.edit_message(event.chat_id, msg.id, str(response['error']))
+        if not response.get('error'):
+            print(f"New text {str(response['message'])}")
+            print(f"\nOld text {msg.raw_text}")
+            print("\n\n")
+            await client.edit_message(event.chat_id, msg.id, str(response['message']))
+        else:
+            await client.edit_message(event.chat_id, msg.id, str(response['error']))
+    except Exception as e:
+        print(f"Model call error: {e}")
+        await msg.edit(f"Произошла ошибка при обращении к модели.")
 
 client.start(bot_token=TOKEN)
 client.run_until_disconnected()
+
+'''
+TODO: сохранение настроек в БД (aiosqlite)
+'''
